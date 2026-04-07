@@ -27,6 +27,19 @@ async function ensureDataFile() {
   } catch {
     await fsp.writeFile(COUNTS_FILE, "{}\n", "utf8");
   }
+
+  const raw = await fsp.readFile(COUNTS_FILE, "utf8");
+  const parsed = JSON.parse(raw || "{}");
+  const normalized = {};
+
+  for (const [key, value] of Object.entries(parsed)) {
+    const normalizedKey = getCountKey(key);
+    normalized[normalizedKey] = Number(normalized[normalizedKey] || 0) + Number(value || 0);
+  }
+
+  if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+    await fsp.writeFile(COUNTS_FILE, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+  }
 }
 
 function sendJson(res, statusCode, payload) {
@@ -57,6 +70,22 @@ async function writeCounts(counts) {
   await fsp.writeFile(COUNTS_FILE, `${JSON.stringify(counts, null, 2)}\n`, "utf8");
 }
 
+function getCountKey(filePath) {
+  return path.basename(filePath);
+}
+
+async function readCountsByFileName() {
+  const rawCounts = await readCounts();
+  const normalizedCounts = {};
+
+  for (const [key, value] of Object.entries(rawCounts)) {
+    const normalizedKey = getCountKey(key);
+    normalizedCounts[normalizedKey] = Number(normalizedCounts[normalizedKey] || 0) + Number(value || 0);
+  }
+
+  return normalizedCounts;
+}
+
 function resolveLocalPath(inputPath) {
   if (!inputPath || typeof inputPath !== "string") {
     throw new Error("path is required");
@@ -84,13 +113,15 @@ async function getTrackInfo(requestedPath) {
     throw new Error("unsupported audio format");
   }
 
-  const counts = await readCounts();
+  const counts = await readCountsByFileName();
+  const countKey = getCountKey(resolvedPath);
   return {
     path: resolvedPath,
-    name: path.basename(resolvedPath),
+    name: countKey,
+    countKey,
     size: stats.size,
     mimeType: MIME_TYPES[ext],
-    count: Number(counts[resolvedPath] || 0)
+    count: Number(counts[countKey] || 0)
   };
 }
 
@@ -233,20 +264,20 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/listens") {
       const body = await parseRequestBody(req);
       const info = await getTrackInfo(body.path);
-      const counts = await readCounts();
-      counts[info.path] = Number(counts[info.path] || 0) + 1;
+      const counts = await readCountsByFileName();
+      counts[info.countKey] = Number(counts[info.countKey] || 0) + 1;
       await writeCounts(counts);
-      sendJson(res, 200, { path: info.path, count: counts[info.path] });
+      sendJson(res, 200, { path: info.path, countKey: info.countKey, count: counts[info.countKey] });
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/clear-count") {
       const body = await parseRequestBody(req);
       const info = await getTrackInfo(body.path);
-      const counts = await readCounts();
-      counts[info.path] = 0;
+      const counts = await readCountsByFileName();
+      counts[info.countKey] = 0;
       await writeCounts(counts);
-      sendJson(res, 200, { path: info.path, count: 0 });
+      sendJson(res, 200, { path: info.path, countKey: info.countKey, count: 0 });
       return;
     }
 

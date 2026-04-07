@@ -219,10 +219,8 @@ playButton.addEventListener("click", async () => {
 
 stopButton.addEventListener("click", () => {
   audioPlayer.pause();
-  audioPlayer.currentTime = 0;
-  resetListenSession();
   updateProgress();
-  setStatus("Stopped.");
+  setStatus("Paused.");
 });
 
 clearButton.addEventListener("click", async () => {
@@ -259,12 +257,6 @@ audioPlayer.addEventListener("timeupdate", () => {
   }
 
   const currentTime = audioPlayer.currentTime;
-  const delta = currentTime - listenSession.previousTime;
-
-  if (delta > 2.5) {
-    listenSession.invalidated = true;
-  }
-
   listenSession.furthestPoint = Math.max(listenSession.furthestPoint, currentTime);
   listenSession.previousTime = currentTime;
 });
@@ -282,12 +274,12 @@ audioPlayer.addEventListener("seeking", () => {
 audioPlayer.addEventListener("ended", async () => {
   updateProgress();
   const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
-  const minimumProgress = duration > 10 ? duration - 1 : duration * 0.95;
+  listenSession.furthestPoint = Math.max(listenSession.furthestPoint, duration);
   const shouldCount =
     listenSession.shouldCountOnEnd &&
     listenSession.startedNearBeginning &&
     !listenSession.invalidated &&
-    listenSession.furthestPoint >= minimumProgress;
+    duration > 0;
 
   if (shouldCount) {
     try {
