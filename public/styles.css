@@ -60,6 +60,24 @@ body {
   gap: 12px;
 }
 
+.manual-load-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.manual-load-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.manual-load-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
 .top-row {
   align-items: center;
   justify-content: space-between;
@@ -75,6 +93,22 @@ button {
   font-weight: 700;
   cursor: pointer;
   transition: transform 140ms ease, background 140ms ease, opacity 140ms ease;
+}
+
+.track-path-input {
+  min-width: 0;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--text-main);
+  font: inherit;
+}
+
+.track-path-input:focus {
+  outline: 2px solid rgba(15, 122, 255, 0.2);
+  outline-offset: 2px;
 }
 
 .primary-button {
@@ -207,6 +241,10 @@ audio {
   .track-card {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .manual-load-row {
+    grid-template-columns: 1fr;
   }
 
   button {

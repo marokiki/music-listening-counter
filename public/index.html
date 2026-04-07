@@ -10,8 +10,24 @@
     <main class="app-shell">
       <section class="panel">
         <div class="top-row">
-          <button id="pick-button" type="button" class="primary-button">Choose in Finder</button>
-          <p class="hint">Pick one local audio file from macOS Finder</p>
+          <button id="pick-button" type="button" class="primary-button">Choose Audio File</button>
+          <p class="hint">Open a local audio file from your device in any modern browser</p>
+        </div>
+        <input id="file-input" type="file" accept="audio/*" hidden />
+
+        <div class="manual-load-card">
+          <label class="manual-load-label" for="track-path-input">Or enter a server file path</label>
+          <div class="manual-load-row">
+            <input
+              id="track-path-input"
+              class="track-path-input"
+              type="text"
+              placeholder="/path/to/track.mp3"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <button id="load-path-button" type="button">Load Path</button>
+          </div>
         </div>
 
         <div class="track-card">

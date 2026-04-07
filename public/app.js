@@ -1,4 +1,7 @@
 const pickButton = document.querySelector("#pick-button");
+const fileInput = document.querySelector("#file-input");
+const trackPathInput = document.querySelector("#track-path-input");
+const loadPathButton = document.querySelector("#load-path-button");
 const trackName = document.querySelector("#track-name");
 const trackPathView = document.querySelector("#track-path-view");
 const listenCount = document.querySelector("#listen-count");
@@ -16,6 +19,8 @@ const progressSlider = document.querySelector("#progress-slider");
 const LAST_TRACK_PATH_KEY = "music-listening:last-track-path";
 
 let currentTrackPath = "";
+let currentTrackKey = "";
+let currentObjectUrl = "";
 let listenSession = createListenSession();
 let isScrubbing = false;
 
@@ -39,6 +44,13 @@ function updateControls(enabled) {
   stopButton.disabled = !enabled;
   clearButton.disabled = !enabled;
   progressSlider.disabled = !enabled;
+}
+
+function clearObjectUrl() {
+  if (currentObjectUrl) {
+    URL.revokeObjectURL(currentObjectUrl);
+    currentObjectUrl = "";
+  }
 }
 
 function resetListenSession() {
@@ -102,7 +114,12 @@ async function requestJson(url, options) {
 
 function applyTrackInfo(info) {
   currentTrackPath = info.path;
+  currentTrackKey = info.countKey;
   saveLastTrackPath(info.path);
+  clearObjectUrl();
+  if (trackPathInput) {
+    trackPathInput.value = info.path;
+  }
   trackName.textContent = info.name;
   trackPathView.textContent = info.path;
   listenCount.textContent = String(info.count);
@@ -114,6 +131,33 @@ function applyTrackInfo(info) {
   updateProgress();
   updateControls(true);
   setStatus("Track loaded. Press play.");
+}
+
+async function loadLocalFile(file) {
+  if (!file) {
+    return;
+  }
+
+  const info = await requestJson(`/api/track-info?name=${encodeURIComponent(file.name)}`);
+  currentTrackPath = "";
+  currentTrackKey = info.countKey || file.name;
+  clearLastTrackPath();
+  clearObjectUrl();
+  currentObjectUrl = URL.createObjectURL(file);
+  if (trackPathInput) {
+    trackPathInput.value = "";
+  }
+  trackName.textContent = file.name;
+  trackPathView.textContent = `Local file on this device (${file.type || "audio"})`;
+  listenCount.textContent = String(info.count);
+  audioPlayer.src = currentObjectUrl;
+  audioPlayer.load();
+  audioPlayer.pause();
+  audioPlayer.currentTime = 0;
+  resetListenSession();
+  updateProgress();
+  updateControls(true);
+  setStatus("Local file loaded. Press play.");
 }
 
 async function loadTrack(pathValue) {
@@ -135,7 +179,7 @@ async function recordListen() {
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ path: currentTrackPath })
+    body: JSON.stringify({ path: currentTrackPath, countKey: currentTrackKey })
   });
   listenCount.textContent = String(result.count);
 }
@@ -152,7 +196,9 @@ function startNewCycle() {
 
 async function resetTrackState(errorMessage) {
   currentTrackPath = "";
+  currentTrackKey = "";
   clearLastTrackPath();
+  clearObjectUrl();
   audioPlayer.removeAttribute("src");
   audioPlayer.load();
   trackName.textContent = "No track selected";
@@ -179,23 +225,53 @@ async function restoreLastTrack() {
   }
 }
 
-pickButton.addEventListener("click", async () => {
-  setStatus("Loading...");
+pickButton.addEventListener("click", () => {
+  fileInput?.click();
+});
 
+fileInput?.addEventListener("change", async () => {
+  const [file] = fileInput.files || [];
+  if (!file) {
+    setStatus("File selection was cancelled.");
+    return;
+  }
+
+  setStatus("Loading local file...");
   try {
-    const info = await requestJson("/api/pick-track", { method: "POST" });
-    applyTrackInfo(info);
+    await loadLocalFile(file);
   } catch (error) {
-    if (error.message === "file selection was cancelled") {
-      setStatus("File selection was cancelled.");
-      return;
-    }
+    await resetTrackState(error.message);
+  } finally {
+    fileInput.value = "";
+  }
+});
+
+loadPathButton?.addEventListener("click", async () => {
+  const pathValue = trackPathInput?.value?.trim() || "";
+  if (!pathValue) {
+    setStatus("Enter an audio file path first.", true);
+    return;
+  }
+
+  setStatus("Loading track...");
+  try {
+    await loadTrack(pathValue);
+  } catch (error) {
     await resetTrackState(error.message);
   }
 });
 
+trackPathInput?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  event.preventDefault();
+  loadPathButton?.click();
+});
+
 playButton.addEventListener("click", async () => {
-  if (!currentTrackPath) {
+  if (!audioPlayer.src || !currentTrackKey) {
     return;
   }
 
@@ -224,7 +300,7 @@ stopButton.addEventListener("click", () => {
 });
 
 clearButton.addEventListener("click", async () => {
-  if (!currentTrackPath) {
+  if (!currentTrackKey) {
     return;
   }
 
@@ -240,7 +316,7 @@ clearButton.addEventListener("click", async () => {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ path: currentTrackPath })
+      body: JSON.stringify({ path: currentTrackPath, countKey: currentTrackKey })
     });
     listenCount.textContent = String(result.count);
     setStatus("Play count cleared for this track.");

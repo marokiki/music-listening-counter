@@ -74,6 +74,19 @@ function getCountKey(filePath) {
   return path.basename(filePath);
 }
 
+function getProvidedCountKey(value) {
+  if (!value || typeof value !== "string") {
+    throw new Error("countKey is required");
+  }
+
+  const normalized = path.basename(value.trim());
+  if (!normalized) {
+    throw new Error("countKey is required");
+  }
+
+  return normalized;
+}
+
 async function readCountsByFileName() {
   const rawCounts = await readCounts();
   const normalizedCounts = {};
@@ -121,6 +134,19 @@ async function getTrackInfo(requestedPath) {
     countKey,
     size: stats.size,
     mimeType: MIME_TYPES[ext],
+    count: Number(counts[countKey] || 0)
+  };
+}
+
+async function getTrackInfoByName(name) {
+  const countKey = getProvidedCountKey(name);
+  const counts = await readCountsByFileName();
+  return {
+    path: "",
+    name: countKey,
+    countKey,
+    size: 0,
+    mimeType: "",
     count: Number(counts[countKey] || 0)
   };
 }
@@ -244,7 +270,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/track-info") {
-      const info = await getTrackInfo(url.searchParams.get("path"));
+      const info = url.searchParams.get("name")
+        ? await getTrackInfoByName(url.searchParams.get("name"))
+        : await getTrackInfo(url.searchParams.get("path"));
       sendJson(res, 200, info);
       return;
     }
@@ -263,7 +291,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/listens") {
       const body = await parseRequestBody(req);
-      const info = await getTrackInfo(body.path);
+      const info = body.path ? await getTrackInfo(body.path) : await getTrackInfoByName(body.countKey);
       const counts = await readCountsByFileName();
       counts[info.countKey] = Number(counts[info.countKey] || 0) + 1;
       await writeCounts(counts);
@@ -273,7 +301,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/clear-count") {
       const body = await parseRequestBody(req);
-      const info = await getTrackInfo(body.path);
+      const info = body.path ? await getTrackInfo(body.path) : await getTrackInfoByName(body.countKey);
       const counts = await readCountsByFileName();
       counts[info.countKey] = 0;
       await writeCounts(counts);
@@ -283,7 +311,7 @@ const server = http.createServer(async (req, res) => {
 
     sendText(res, 404, "Not found");
   } catch (error) {
-    const statusCode = /ENOENT|unsupported audio format|not a file|path is required/.test(String(error.message))
+    const statusCode = /ENOENT|unsupported audio format|not a file|path is required|countKey is required/.test(String(error.message))
       ? 400
       : 500;
     sendJson(res, statusCode, { error: error.message || "Unexpected error" });
