@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Music Listening Counter</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="panel">
+        <div class="top-row">
+          <button id="pick-button" type="button" class="primary-button">Choose in Finder</button>
+          <p class="hint">Pick one local audio file from macOS Finder</p>
+        </div>
+
+        <div class="track-card">
+          <div>
+            <p id="track-name" class="track-name">No track selected</p>
+            <p id="track-path-view" class="track-path">-</p>
+          </div>
+          <div class="count-box">
+            <p class="meta-label">Play Count</p>
+            <p id="listen-count" class="listen-count">0</p>
+          </div>
+        </div>
+
+        <div class="progress-card">
+          <div class="progress-labels">
+            <span id="progress-current">0:00</span>
+            <span id="progress-total">0:00</span>
+          </div>
+          <div class="progress-track">
+            <div id="progress-fill" class="progress-fill"></div>
+            <input
+              id="progress-slider"
+              class="progress-slider"
+              type="range"
+              min="0"
+              max="1000"
+              value="0"
+              step="1"
+              disabled
+              aria-label="Playback position"
+            />
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="play-button" type="button" disabled>Play</button>
+          <button id="stop-button" type="button" disabled>Stop</button>
+          <label class="repeat-toggle">
+            <input id="repeat-toggle" type="checkbox" checked />
+            <span>Repeat</span>
+          </label>
+          <button id="clear-button" type="button" disabled>Clear Count</button>
+        </div>
+
+        <p id="status" class="status">Choose a track to begin.</p>
+        <audio id="audio-player" preload="metadata"></audio>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
