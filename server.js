@@ -2,8 +2,6 @@ const http = require("http");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
-const os = require("os");
-const { execFile } = require("child_process");
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = process.env.PORT || 4782;
@@ -114,30 +112,6 @@ function resolveLocalPath(inputPath) {
   return fs.realpathSync.native(absolutePath);
 }
 
-async function getTrackInfo(requestedPath) {
-  const resolvedPath = resolveLocalPath(requestedPath);
-  const stats = await fsp.stat(resolvedPath);
-  if (!stats.isFile()) {
-    throw new Error("path is not a file");
-  }
-
-  const ext = path.extname(resolvedPath).toLowerCase();
-  if (!MIME_TYPES[ext]) {
-    throw new Error("unsupported audio format");
-  }
-
-  const counts = await readCountsByFileName();
-  const countKey = getCountKey(resolvedPath);
-  return {
-    path: resolvedPath,
-    name: countKey,
-    countKey,
-    size: stats.size,
-    mimeType: MIME_TYPES[ext],
-    count: Number(counts[countKey] || 0)
-  };
-}
-
 async function getTrackInfoByName(name) {
   const countKey = getProvidedCountKey(name);
   const counts = await readCountsByFileName();
@@ -164,36 +138,6 @@ async function parseRequestBody(req) {
   return JSON.parse(rawBody);
 }
 
-function pickTrackWithFinder() {
-  return new Promise((resolve, reject) => {
-    if (process.platform !== "darwin") {
-      reject(new Error("Finder selection is only supported on macOS"));
-      return;
-    }
-
-    execFile(
-      "osascript",
-      [
-        "-e",
-        'POSIX path of (choose file with prompt "Choose an audio file" of type {"public.audio"})'
-      ],
-      (error, stdout, stderr) => {
-        if (error) {
-          const message = stderr?.trim() || error.message;
-          if (/User canceled|-\d+/.test(message)) {
-            reject(new Error("file selection was cancelled"));
-            return;
-          }
-          reject(new Error(message));
-          return;
-        }
-
-        resolve(stdout.trim());
-      }
-    );
-  });
-}
-
 function serveFile(res, filePath) {
   const ext = path.extname(filePath).toLowerCase();
   const mimeType =
@@ -206,48 +150,6 @@ function serveFile(res, filePath) {
   fs.createReadStream(filePath)
     .on("error", () => sendText(res, 500, "Failed to read file"))
     .pipe(res.writeHead(200, { "Content-Type": mimeType, "Cache-Control": "no-store" }));
-}
-
-async function handleTrackStream(req, res, requestedPath) {
-  const info = await getTrackInfo(requestedPath);
-  const rangeHeader = req.headers.range;
-
-  if (!rangeHeader) {
-    res.writeHead(200, {
-      "Content-Type": info.mimeType,
-      "Content-Length": info.size,
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "no-store"
-    });
-    fs.createReadStream(info.path).pipe(res);
-    return;
-  }
-
-  const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
-  if (!match) {
-    res.writeHead(416, { "Content-Range": `bytes */${info.size}` });
-    res.end();
-    return;
-  }
-
-  const start = match[1] ? Number(match[1]) : 0;
-  const end = match[2] ? Number(match[2]) : info.size - 1;
-
-  if (start > end || end >= info.size) {
-    res.writeHead(416, { "Content-Range": `bytes */${info.size}` });
-    res.end();
-    return;
-  }
-
-  res.writeHead(206, {
-    "Content-Type": info.mimeType,
-    "Content-Length": end - start + 1,
-    "Content-Range": `bytes ${start}-${end}/${info.size}`,
-    "Accept-Ranges": "bytes",
-    "Cache-Control": "no-store"
-  });
-
-  fs.createReadStream(info.path, { start, end }).pipe(res);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -270,28 +172,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/track-info") {
-      const info = url.searchParams.get("name")
-        ? await getTrackInfoByName(url.searchParams.get("name"))
-        : await getTrackInfo(url.searchParams.get("path"));
+      const info = await getTrackInfoByName(url.searchParams.get("name"));
       sendJson(res, 200, info);
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/pick-track") {
-      const selectedPath = await pickTrackWithFinder();
-      const info = await getTrackInfo(selectedPath);
-      sendJson(res, 200, info);
-      return;
-    }
-
-    if (req.method === "GET" && url.pathname === "/api/track") {
-      await handleTrackStream(req, res, url.searchParams.get("path"));
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/listens") {
       const body = await parseRequestBody(req);
-      const info = body.path ? await getTrackInfo(body.path) : await getTrackInfoByName(body.countKey);
+      const info = await getTrackInfoByName(body.countKey);
       const counts = await readCountsByFileName();
       counts[info.countKey] = Number(counts[info.countKey] || 0) + 1;
       await writeCounts(counts);
@@ -301,7 +189,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/clear-count") {
       const body = await parseRequestBody(req);
-      const info = body.path ? await getTrackInfo(body.path) : await getTrackInfoByName(body.countKey);
+      const info = await getTrackInfoByName(body.countKey);
       const counts = await readCountsByFileName();
       counts[info.countKey] = 0;
       await writeCounts(counts);
@@ -311,7 +199,7 @@ const server = http.createServer(async (req, res) => {
 
     sendText(res, 404, "Not found");
   } catch (error) {
-    const statusCode = /ENOENT|unsupported audio format|not a file|path is required|countKey is required/.test(String(error.message))
+    const statusCode = /countKey is required/.test(String(error.message))
       ? 400
       : 500;
     sendJson(res, statusCode, { error: error.message || "Unexpected error" });

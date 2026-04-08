@@ -1,7 +1,5 @@
 const pickButton = document.querySelector("#pick-button");
 const fileInput = document.querySelector("#file-input");
-const trackPathInput = document.querySelector("#track-path-input");
-const loadPathButton = document.querySelector("#load-path-button");
 const trackName = document.querySelector("#track-name");
 const trackPathView = document.querySelector("#track-path-view");
 const listenCount = document.querySelector("#listen-count");
@@ -16,9 +14,6 @@ const progressTotal = document.querySelector("#progress-total");
 const progressFill = document.querySelector("#progress-fill");
 const progressSlider = document.querySelector("#progress-slider");
 
-const LAST_TRACK_PATH_KEY = "music-listening:last-track-path";
-
-let currentTrackPath = "";
 let currentTrackKey = "";
 let currentObjectUrl = "";
 let listenSession = createListenSession();
@@ -54,18 +49,6 @@ function clearObjectUrl() {
 
 function resetListenSession() {
   listenSession = createListenSession();
-}
-
-function saveLastTrackPath(trackPath) {
-  window.localStorage.setItem(LAST_TRACK_PATH_KEY, trackPath);
-}
-
-function getLastTrackPath() {
-  return window.localStorage.getItem(LAST_TRACK_PATH_KEY);
-}
-
-function clearLastTrackPath() {
-  window.localStorage.removeItem(LAST_TRACK_PATH_KEY);
 }
 
 function formatTime(seconds) {
@@ -112,64 +95,14 @@ async function requestJson(url, options) {
 }
 
 function applyTrackInfo(info) {
-  currentTrackPath = info.path;
   currentTrackKey = info.countKey;
-  saveLastTrackPath(info.path);
   clearObjectUrl();
-  if (trackPathInput) {
-    trackPathInput.value = info.path;
-  }
   trackName.textContent = info.name;
-  trackPathView.textContent = info.path;
+  trackPathView.textContent = "Local file on this device";
   listenCount.textContent = String(info.count);
-  audioPlayer.src = `/api/track?path=${encodeURIComponent(info.path)}`;
-  audioPlayer.load();
-  audioPlayer.pause();
-  audioPlayer.currentTime = 0;
   resetListenSession();
   updateProgress();
-  updateControls(true);
-  setStatus("Track loaded. Press play.");
-}
-
-async function loadLocalFile(file) {
-  if (!file) {
-    return;
-  }
-
-  const info = await requestJson(`/api/track-info?name=${encodeURIComponent(file.name)}`);
-  currentTrackPath = "";
-  currentTrackKey = info.countKey || file.name;
-  clearLastTrackPath();
-  clearObjectUrl();
-  currentObjectUrl = URL.createObjectURL(file);
-  if (trackPathInput) {
-    trackPathInput.value = "";
-  }
-  trackName.textContent = file.name;
-  trackPathView.textContent = `Local file on this device (${file.type || "audio"})`;
-  listenCount.textContent = String(info.count);
-  audioPlayer.src = currentObjectUrl;
-  audioPlayer.load();
-  audioPlayer.pause();
-  audioPlayer.currentTime = 0;
-  resetListenSession();
-  updateProgress();
-  updateControls(true);
-  setStatus("Local file loaded. Press play.");
-}
-
-async function loadTrack(pathValue) {
-  const info = await requestJson(`/api/track-info?path=${encodeURIComponent(pathValue)}`);
-  applyTrackInfo(info);
-}
-
-async function loadTrackForTesting(pathValue) {
-  await loadTrack(pathValue);
-  return {
-    path: currentTrackPath,
-    count: Number(listenCount.textContent || "0")
-  };
+  setStatus("Track metadata loaded.");
 }
 
 async function recordListen() {
@@ -178,7 +111,7 @@ async function recordListen() {
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ path: currentTrackPath, countKey: currentTrackKey })
+    body: JSON.stringify({ countKey: currentTrackKey })
   });
   listenCount.textContent = String(result.count);
 }
@@ -193,9 +126,7 @@ function startNewCycle() {
 }
 
 async function resetTrackState(errorMessage) {
-  currentTrackPath = "";
   currentTrackKey = "";
-  clearLastTrackPath();
   clearObjectUrl();
   audioPlayer.removeAttribute("src");
   audioPlayer.load();
@@ -206,21 +137,6 @@ async function resetTrackState(errorMessage) {
   updateProgress();
   updateControls(false);
   setStatus(errorMessage, true);
-}
-
-async function restoreLastTrack() {
-  const cachedPath = getLastTrackPath();
-  if (!cachedPath) {
-    return;
-  }
-
-  setStatus("Restoring last selected track...");
-  try {
-    await loadTrack(cachedPath);
-    setStatus("Last selected track restored.");
-  } catch (error) {
-    await resetTrackState(`Could not restore the last selected track: ${error.message}`);
-  }
 }
 
 pickButton.addEventListener("click", () => {
@@ -236,36 +152,26 @@ fileInput?.addEventListener("change", async () => {
 
   setStatus("Loading local file...");
   try {
-    await loadLocalFile(file);
+    const info = await requestJson(`/api/track-info?name=${encodeURIComponent(file.name)}`);
+    clearObjectUrl();
+    currentObjectUrl = URL.createObjectURL(file);
+    currentTrackKey = info.countKey || file.name;
+    trackName.textContent = file.name;
+    trackPathView.textContent = `Local file on this device (${file.type || "audio"})`;
+    listenCount.textContent = String(info.count);
+    audioPlayer.src = currentObjectUrl;
+    audioPlayer.load();
+    audioPlayer.pause();
+    audioPlayer.currentTime = 0;
+    resetListenSession();
+    updateProgress();
+    updateControls(true);
+    setStatus("Local file loaded. Press play.");
   } catch (error) {
     await resetTrackState(error.message);
   } finally {
     fileInput.value = "";
   }
-});
-
-loadPathButton?.addEventListener("click", async () => {
-  const pathValue = trackPathInput?.value?.trim() || "";
-  if (!pathValue) {
-    setStatus("Enter an audio file path first.", true);
-    return;
-  }
-
-  setStatus("Loading track...");
-  try {
-    await loadTrack(pathValue);
-  } catch (error) {
-    await resetTrackState(error.message);
-  }
-});
-
-trackPathInput?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") {
-    return;
-  }
-
-  event.preventDefault();
-  loadPathButton?.click();
 });
 
 playButton.addEventListener("click", async () => {
@@ -314,7 +220,7 @@ clearButton.addEventListener("click", async () => {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ path: currentTrackPath, countKey: currentTrackKey })
+      body: JSON.stringify({ countKey: currentTrackKey })
     });
     listenCount.textContent = String(result.count);
     setStatus("Play count cleared for this track.");
@@ -397,9 +303,3 @@ progressSlider.addEventListener("change", () => {
   isScrubbing = false;
   updateProgress();
 });
-
-window.musicListeningApp = {
-  loadTrackByPath: loadTrackForTesting
-};
-
-restoreLastTrack();
