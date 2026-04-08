@@ -13,7 +13,12 @@
           <button id="pick-button" type="button" class="primary-button">Choose Audio File</button>
           <p class="hint">Open a local audio file from your device in any modern browser</p>
         </div>
-        <input id="file-input" type="file" accept="audio/*" hidden />
+        <input
+          id="file-input"
+          type="file"
+          accept=".mp3,.m4a,.aac,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/flac"
+          hidden
+        />
 
         <div class="manual-load-card">
           <label class="manual-load-label" for="track-path-input">Or enter a server file path</label>
