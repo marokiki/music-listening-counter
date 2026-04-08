@@ -29,7 +29,6 @@ function createListenSession() {
     furthestPoint: 0,
     previousTime: 0,
     startedNearBeginning: true,
-    invalidated: false,
     shouldCountOnEnd: false
   };
 }
@@ -189,7 +188,6 @@ function startNewCycle() {
     furthestPoint: 0,
     previousTime: 0,
     startedNearBeginning: audioPlayer.currentTime <= 1,
-    invalidated: false,
     shouldCountOnEnd: true
   };
 }
@@ -337,16 +335,6 @@ audioPlayer.addEventListener("timeupdate", () => {
   listenSession.previousTime = currentTime;
 });
 
-audioPlayer.addEventListener("seeking", () => {
-  if (!listenSession.shouldCountOnEnd) {
-    return;
-  }
-
-  if (audioPlayer.currentTime > listenSession.previousTime + 2.5) {
-    listenSession.invalidated = true;
-  }
-});
-
 audioPlayer.addEventListener("ended", async () => {
   updateProgress();
   const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
@@ -354,7 +342,6 @@ audioPlayer.addEventListener("ended", async () => {
   const shouldCount =
     listenSession.shouldCountOnEnd &&
     listenSession.startedNearBeginning &&
-    !listenSession.invalidated &&
     duration > 0;
 
   if (shouldCount) {
